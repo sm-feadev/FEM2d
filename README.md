@@ -33,7 +33,7 @@ command to run if program contains helper info
 
 Contributors names and contact info
 
-Suvro Mukherjee [github.com/suvro-mukherjee]
+SMukherjee [github.com/sm-feadev]
 
 ## Version History
 
