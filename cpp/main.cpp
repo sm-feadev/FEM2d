@@ -1,157 +1,108 @@
 /*
- * main.cpp  —  MITC6 Shell FEM driver
+ * main.cpp  —  MITC6 Shell FEM driver (input-file driven)
  *
- * Demonstrates:
- *   • single cutout   (rounded rectangle)
- *   • two cutouts     (circle + ellipse)
- *   • three cutouts   (rectangle + circle + rounded_rectangle)
+ * Usage:
+ *   ./mitcs6 plate.inp
  *
- * Select the scenario by setting SCENARIO = 1 / 2 / 3 below.
- * All results are written to plate_results.vtk (open in ParaView).
+ * If no argument is given, looks for "plate.inp" in the current directory.
  */
 
 #include "mitcs6.h"
+#include "input_parser.h"
 #include <gmsh.h>
 #include <cstdio>
 #include <stdexcept>
+#include <string>
 
-// ── choose demo scenario ──────────────────────────────────────────────────────
-static constexpr int SCENARIO = 1;
-
-static Config make_config()
+int main(int argc, char* argv[])
 {
-    Config cfg;
-    cfg.plate_w   = 300.0;
-    cfg.plate_h   = 200.0;
-    cfg.mesh_size =  10.0;
-    cfg.E         = 210000.0;   // steel [MPa]
-    cfg.nu        =      0.30;
-    cfg.thickness =     10.0;   // [mm]
-    cfg.pressure  =     -0.1;   // lateral pressure, –ve = downward [MPa]
-    cfg.msh_file  = "plate_mitc6.msh";
-    cfg.out_base  = "plate_results";
+    std::string inp_file = (argc >= 2) ? argv[1] : "plate.inp";
 
-    if constexpr (SCENARIO == 1) {
-        // ── single rounded-rectangle cutout ──────────────────────────────────
-        cfg.cutouts.push_back({CutoutType::RoundedRectangle,
-                               150.0, 100.0,   // cx, cy
-                               120.0,  60.0,   // w,  h
-                                10.0});         // r
-    }
-    else if constexpr (SCENARIO == 2) {
-        // ── two cutouts: circle (left) + ellipse (right) ─────────────────────
-        cfg.cutouts.push_back({CutoutType::Circle,
-                               100.0, 100.0,   // cx, cy
-                                 0.0,   0.0,   // w, h unused for circle
-                                30.0});         // r = radius
-        cfg.cutouts.push_back({CutoutType::Ellipse,
-                               210.0, 100.0,
-                                60.0,  30.0,   // w=2a, h=2b
-                                 0.0});
-    }
-    else if constexpr (SCENARIO == 3) {
-        // ── three cutouts ────────────────────────────────────────────────────
-        cfg.cutouts.push_back({CutoutType::Rectangle,
-                                80.0, 100.0,
-                                40.0,  40.0,
-                                 0.0});
-        cfg.cutouts.push_back({CutoutType::Circle,
-                               165.0, 100.0,
-                                 0.0,   0.0,
-                                25.0});
-        cfg.cutouts.push_back({CutoutType::RoundedRectangle,
-                               240.0, 100.0,
-                                60.0,  50.0,
-                                 8.0});
-    }
-
-    return cfg;
-}
-
-int main()
-{
     gmsh::initialize();
     try {
-        Config cfg = make_config();
+        // ── parse input ───────────────────────────────────────────────────────
+        std::printf("Reading: %s\n", inp_file.c_str());
+        ProblemDef pd  = parse_input(inp_file);
+        print_problem_def(pd);
+        Config     cfg = to_config(pd);
 
-        // ── geometry ─────────────────────────────────────────────────────────
-        std::printf("=== Creating geometry (scenario %d, %zu cutout(s)) ===\n",
-                    SCENARIO, cfg.cutouts.size());
+        // ── geometry ──────────────────────────────────────────────────────────
+        std::printf("\n=== Geometry (%zu cutout(s)) ===\n", cfg.cutouts.size());
         create_geometry(cfg);
-
         if (cfg.verify_geometry_only) {
-            std::printf("Geometry OK — stopping (verify_geometry_only=true).\n");
+            std::printf("Geometry OK — stopping.\n");
             gmsh::finalize();
             return 0;
         }
 
-        // ── mesh ─────────────────────────────────────────────────────────────
-        std::printf("=== Meshing ===\n");
+        // ── mesh ──────────────────────────────────────────────────────────────
+        std::printf("=== Mesh ===\n");
         Mesh mesh = create_mesh(cfg);
-        std::printf("  Nodes   : %d\n", mesh.n_nodes());
-        std::printf("  Elements: %d\n", mesh.n_elems());
-        std::printf("  DOFs    : %d\n", mesh.n_dof());
+        std::printf("  Nodes %d  Elements %d  DOFs %d\n",
+                    mesh.n_nodes(), mesh.n_elems(), mesh.n_dof());
 
-        // ── stiffness ────────────────────────────────────────────────────────
-        std::printf("=== Assembling stiffness ===\n");
+        // ── stiffness ─────────────────────────────────────────────────────────
+        std::printf("=== Stiffness ===\n");
         SpMat K = assemble_stiffness(mesh, cfg.E, cfg.nu, cfg.thickness);
-
-        // Small numerical regularisation to remove zero-energy modes
-        // K += ε·I   (ε ≪ smallest non-zero eigenvalue)
         for (int i = 0; i < mesh.n_dof(); ++i)
             K.coeffRef(i, i) += 1e-12 * cfg.E;
 
-        // ── load: uniform lateral pressure ───────────────────────────────────
-        std::printf("=== Assembling load vector ===\n");
-        Eigen::VectorXd F = assemble_pressure_load(mesh, cfg.pressure);
-        std::printf("  |F| = %.4e N\n", F.norm());
+        // ── loads ─────────────────────────────────────────────────────────────
+        std::printf("=== Loads ===\n");
+        Eigen::VectorXd F = Eigen::VectorXd::Zero(mesh.n_dof());
+        if (pd.pressure != 0.0) {
+            Eigen::VectorXd Fp = assemble_pressure_load(mesh, pd.pressure);
+            F += Fp;
+            std::printf("  Pressure %.4f MPa  |Fp|=%.4e\n", pd.pressure, Fp.norm());
+        }
+        apply_problem_loads(pd, mesh, F);
+        std::printf("  Total |F| = %.4e N\n", F.norm());
 
         // ── boundary conditions ───────────────────────────────────────────────
-        // Left edge: fully clamped (all 5 DOFs)
-        std::printf("=== Applying boundary conditions ===\n");
+        std::printf("=== BCs ===\n");
         std::vector<int> fixed;
-        auto left_nodes = nodes_on_group(1, "LEFT");
-        add_fixed_dofs(mesh, left_nodes, DOF_ALL, fixed);
+        apply_problem_bcs(pd, mesh, fixed);
 
-        // Suppress in-plane rigid-body translations on remaining free edges:
-        //   one u-DOF on RIGHT,  one v-DOF on BOTTOM
-        auto right_nodes  = nodes_on_group(1, "RIGHT");
-        auto bottom_nodes = nodes_on_group(1, "BOTTOM");
-        if (!right_nodes.empty()) {
-            int n = mesh.node_id.at(right_nodes[0]);
-            fixed.push_back(5*n + 0);   // u
+        // Suppress any remaining in-plane rigid-body modes by pinning one node
+        // on RIGHT (u) and BOTTOM (v) — only if no BC already fixes those DOFs.
+        bool has_u_bc = false, has_v_bc = false;
+        for (const auto& bc : pd.bcs) {
+            int m = bc_mask_public(bc.type);
+            if (m & DOF_U) has_u_bc = true;
+            if (m & DOF_V) has_v_bc = true;
         }
-        if (!bottom_nodes.empty()) {
-            int n = mesh.node_id.at(bottom_nodes[0]);
-            fixed.push_back(5*n + 1);   // v
-        }
+        auto pin_one = [&](const std::string& grp, int dof){
+            try {
+                auto nodes = nodes_on_group(1, grp);
+                if (!nodes.empty())
+                    fixed.push_back(5 * mesh.node_id.at(nodes[0]) + dof);
+            } catch (...) {}
+        };
+        if (!has_u_bc) pin_one("RIGHT",  0);
+        if (!has_v_bc) pin_one("BOTTOM", 1);
 
         apply_bcs(K, F, fixed);
-        std::printf("  Fixed DOFs : %zu\n", fixed.size());
-        std::printf("  Free DOFs  : %d\n",  mesh.n_dof() - static_cast<int>(fixed.size()));
+        std::printf("  Fixed %zu  Free %d\n",
+                    fixed.size(), mesh.n_dof() - (int)fixed.size());
 
         // ── solve ─────────────────────────────────────────────────────────────
-        std::printf("=== Solving ===\n");
+        std::printf("=== Solve ===\n");
         Eigen::VectorXd U = solve_system(K, F);
-
-        // Sanity check
-        bool ok = U.allFinite();
-        if (!ok) throw std::runtime_error("Solution contains NaN/Inf.");
+        if (!U.allFinite())
+            throw std::runtime_error("Solution contains NaN/Inf.");
 
         // ── stress recovery ───────────────────────────────────────────────────
-        std::printf("=== Recovering element responses ===\n");
+        std::printf("=== Stress recovery ===\n");
         auto resp = recover_all(mesh, U, cfg.E, cfg.nu, cfg.thickness);
-
         print_summary(mesh, U, resp);
 
-        // ── export ─────────────────────────────────────────────────────────────
-        std::printf("=== Exporting ===\n");
+        // ── export ────────────────────────────────────────────────────────────
+        std::printf("=== Export ===\n");
         export_vtk(cfg.out_base + ".vtk", mesh, U, resp, cfg.thickness);
-
-        std::printf("Done.\n");
+        std::printf("Done → %s.vtk\n", cfg.out_base.c_str());
     }
     catch (const std::exception& ex) {
-        std::fprintf(stderr, "ERROR: %s\n", ex.what());
+        std::fprintf(stderr, "\nERROR: %s\n", ex.what());
         gmsh::finalize();
         return 1;
     }

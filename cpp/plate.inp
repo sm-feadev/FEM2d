@@ -1,0 +1,153 @@
+# ═══════════════════════════════════════════════════════════════════
+# plate.inp  —  MITC6 Shell FEM input file
+# Units : mm · N · MPa
+#
+# Usage:  ./mitcs6 plate.inp
+#
+# Lines beginning with '#' or ';' are comments.
+# Keys are case-insensitive.  Values are case-sensitive for strings.
+# Sections that may be repeated: [cutout]  [bc]  [point_load]  [edge_load]
+# ═══════════════════════════════════════════════════════════════════
+
+# ───────────────────────────────────────────────────────────────────
+# GEOMETRY
+# ───────────────────────────────────────────────────────────────────
+[geometry]
+plate_w   = 300.0     # plate width  [mm]
+plate_h   = 200.0     # plate height [mm]
+mesh_size =  10.0     # target element size [mm]
+
+# ───────────────────────────────────────────────────────────────────
+# CUTOUTS  (repeat this section for each cutout)
+#
+# type options:
+#   circle            — needs r (radius); cx,cy = centre
+#   ellipse           — needs w (2a) and h (2b); cx,cy = centre
+#   rectangle         — needs w and h; cx,cy = centre
+#   rounded_rectangle — needs w, h, r (corner radius); cx,cy = centre
+# ───────────────────────────────────────────────────────────────────
+[cutout]
+type = rounded_rectangle
+cx   = 150.0
+cy   = 100.0
+w    = 120.0
+h    =  60.0
+r    =  10.0
+
+# Uncomment to add a second cutout (circle, left side):
+# [cutout]
+# type = circle
+# cx   =  60.0
+# cy   = 100.0
+# r    =  30.0
+
+# Uncomment to add a third cutout (ellipse, right side):
+# [cutout]
+# type = ellipse
+# cx   = 250.0
+# cy   = 100.0
+# w    =  50.0
+# h    =  30.0
+
+# ───────────────────────────────────────────────────────────────────
+# MATERIAL
+# ───────────────────────────────────────────────────────────────────
+[material]
+E         = 210000.0   # Young's modulus [MPa]   (steel = 210 000)
+nu        =      0.30  # Poisson's ratio          (steel ≈ 0.28–0.30)
+thickness =     10.0   # plate thickness [mm]
+
+# ───────────────────────────────────────────────────────────────────
+# LOADS
+#
+# [loads] — distributed loads over the entire plate
+#   pressure  : uniform lateral pressure [MPa]
+#               positive = upward (+z), negative = downward (−z)
+#   body_fx   : in-plane body force per unit area in x [N/mm²]
+#   body_fy   : in-plane body force per unit area in y [N/mm²]
+#               (= rho * g * t for gravity, e.g. −7.85e-5 * 9810 * 10 for steel 10 mm)
+#
+# [point_load] — concentrated load at the nearest mesh node
+#   x, y : target coordinates [mm]
+#   Fx, Fy, Fz : forces  [N]
+#   Mx, My     : moments [N·mm]
+#
+# [edge_load] — uniform traction distributed along a named boundary
+#   boundary : physical group name (LEFT | RIGHT | TOP | BOTTOM | HOLE | HOLE_0 …)
+#   Tx : in-plane traction in x [N/mm]
+#   Ty : in-plane traction in y [N/mm]
+#   Tz : transverse traction    [N/mm]
+# ───────────────────────────────────────────────────────────────────
+[loads]
+pressure = -0.1        # lateral pressure [MPa]; negative = downward
+
+# In-plane body force (uncomment for gravity with steel at 10 mm thickness):
+# body_fx  =  0.0
+# body_fy  = -0.7697    # ≈ 7850 kg/m³ × 9.81 m/s² × 0.010 m × 1e-3 MPa/Pa
+
+# Point load at plate centre (uncomment to enable):
+# [point_load]
+# x  = 150.0
+# y  = 100.0
+# Fz = -500.0           # 500 N downward
+
+# Uniform in-plane tension on the right edge (uncomment to enable):
+# [edge_load]
+# boundary = RIGHT
+# Tx = 10.0             # 10 N/mm tension in x
+
+# Transverse line load along top edge (uncomment to enable):
+# [edge_load]
+# boundary = TOP
+# Tz = -5.0             # 5 N/mm downward
+
+# ───────────────────────────────────────────────────────────────────
+# BOUNDARY CONDITIONS  (repeat [bc] for each boundary region)
+#
+# boundary : physical group name — LEFT | RIGHT | TOP | BOTTOM | HOLE | HOLE_0 …
+# type     :
+#   clamped           fix u v w θx θy  (all 5 DOFs)
+#   pinned            fix u v w        (rotations free)
+#   simply_supported  fix w only       (classic plate SS)
+#   roller_x          fix u only
+#   roller_y          fix v only
+#   roller_z          fix w only       (synonym for simply_supported)
+#   symmetry_x        fix u, θy        (symmetry plane x = const)
+#   symmetry_y        fix v, θx        (symmetry plane y = const)
+#   antisymmetry_x    fix v, w, θx     (anti-symmetry plane x = const)
+#   antisymmetry_y    fix u, w, θy     (anti-symmetry plane y = const)
+#   free              no constraints   (explicit no-op, for documentation)
+# ───────────────────────────────────────────────────────────────────
+[bc]
+boundary = LEFT
+type     = clamped
+
+# Simply support the right edge (uncomment to change):
+# [bc]
+# boundary = RIGHT
+# type     = simply_supported
+
+# All-edges simply supported (uncomment all four):
+# [bc]
+# boundary = LEFT
+# type     = simply_supported
+#
+# [bc]
+# boundary = RIGHT
+# type     = simply_supported
+#
+# [bc]
+# boundary = TOP
+# type     = simply_supported
+#
+# [bc]
+# boundary = BOTTOM
+# type     = simply_supported
+
+# ───────────────────────────────────────────────────────────────────
+# OUTPUT / RUN CONTROL
+# ───────────────────────────────────────────────────────────────────
+[output]
+verify_geometry_only = false    # true = stop after geometry, skip FE solve
+msh_file             = plate_mitc6.msh
+out_base             = plate_results   # writes plate_results.vtk
