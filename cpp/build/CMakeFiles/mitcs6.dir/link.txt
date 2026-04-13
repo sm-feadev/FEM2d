@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/mitcs6.dir/main.cpp.o CMakeFiles/mitcs6.dir/mitcs6.cpp.o -o mitcs6  /usr/lib/x86_64-linux-gnu/libgmsh.so -ldl -lm 
