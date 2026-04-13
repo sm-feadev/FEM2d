@@ -1,3 +1,0 @@
-/home/sm/code/fem/cpp/build/CMakeFiles/mitcs6.dir
-/home/sm/code/fem/cpp/build/CMakeFiles/edit_cache.dir
-/home/sm/code/fem/cpp/build/CMakeFiles/rebuild_cache.dir
