@@ -3,29 +3,15 @@
 # Units : mm · N · MPa
 #
 # Usage:  ./mitcs6 plate.inp
-#
-# Lines beginning with '#' or ';' are comments.
-# Keys are case-insensitive.  Values are case-sensitive for strings.
-# Sections that may be repeated: [cutout]  [bc]  [point_load]  [edge_load]
 # ═══════════════════════════════════════════════════════════════════
 
-# ───────────────────────────────────────────────────────────────────
-# GEOMETRY
-# ───────────────────────────────────────────────────────────────────
 [geometry]
-plate_w   = 300.0     # plate width  [mm]
-plate_h   = 200.0     # plate height [mm]
-mesh_size =  10.0     # target element size [mm]
+plate_w   = 300.0
+plate_h   = 200.0
+mesh_size =  10.0
 
-# ───────────────────────────────────────────────────────────────────
-# CUTOUTS  (repeat this section for each cutout)
-#
-# type options:
-#   circle            — needs r (radius); cx,cy = centre
-#   ellipse           — needs w (2a) and h (2b); cx,cy = centre
-#   rectangle         — needs w and h; cx,cy = centre
-#   rounded_rectangle — needs w, h, r (corner radius); cx,cy = centre
-# ───────────────────────────────────────────────────────────────────
+# ── cutouts (repeat this section for each cutout) ───────────────────
+# type: circle | ellipse | rectangle | rounded_rectangle
 [cutout]
 type = rounded_rectangle
 cx   = 150.0
@@ -34,120 +20,136 @@ w    = 120.0
 h    =  60.0
 r    =  10.0
 
-# Uncomment to add a second cutout (circle, left side):
-# [cutout]
-# type = circle
-# cx   =  60.0
-# cy   = 100.0
-# r    =  30.0
-
-# Uncomment to add a third cutout (ellipse, right side):
-# [cutout]
-# type = ellipse
-# cx   = 250.0
-# cy   = 100.0
-# w    =  50.0
-# h    =  30.0
-
-# ───────────────────────────────────────────────────────────────────
-# MATERIAL
-# ───────────────────────────────────────────────────────────────────
+# ── material ─────────────────────────────────────────────────────────
+#
+# PATH 1 — Isotropic (use this section alone):
+#   E, nu, thickness
+#   Optional: preset = steel | aluminium | titanium | copper
+#
+# PATH 2 — Isotropic preset only:
+#   preset = steel   (sets E=210000, nu=0.30; thickness from below)
+#
+# PATH 3 — Laminate (add one or more [ply] sections below):
+#   [material] thickness is used as default ply tk if none set in [ply]
+#   Full ABD matrix computed by CLPT; B≠0 for unsymmetric stacks
+#   preset options for whole laminates: cfrp_quasi | cfrp_ud | gfrp_ud
+#
+# ── currently active: isotropic steel ─────────────────────────────
 [material]
-E         = 210000.0   # Young's modulus [MPa]   (steel = 210 000)
-nu        =      0.30  # Poisson's ratio          (steel ≈ 0.28–0.30)
-thickness =     10.0   # plate thickness [mm]
+E         = 210000.0
+nu        =      0.30
+thickness =     10.0
 
-# ───────────────────────────────────────────────────────────────────
-# LOADS
+# ── example: steel by preset (uncomment to use) ───────────────────
+# [material]
+# preset    = steel
+# thickness = 10.0
+
+# ── example: aluminium (uncomment to use) ─────────────────────────
+# [material]
+# preset    = aluminium
+# thickness =  6.0
+
+# ── example: CFRP quasi-isotropic laminate via preset ─────────────
+# Generates [0/+45/-45/90]s (8 plies), total thickness from below
+# [material]
+# preset    = cfrp_quasi
+# thickness = 10.0     # total laminate thickness; each ply = t/8
+
+# ── example: custom 4-ply CFRP laminate [0/90/90/0] ──────────────
+# (Each [ply] section defines one layer, stacked bottom→top)
+# [material]
+# thickness = 5.0      # informational; overridden by sum of ply tk
 #
-# [loads] — distributed loads over the entire plate
-#   pressure  : uniform lateral pressure [MPa]
-#               positive = upward (+z), negative = downward (−z)
-#   body_fx   : in-plane body force per unit area in x [N/mm²]
-#   body_fy   : in-plane body force per unit area in y [N/mm²]
-#               (= rho * g * t for gravity, e.g. −7.85e-5 * 9810 * 10 for steel 10 mm)
+# [ply]
+# preset = cfrp_t300   # E1=181000 E2=10300 G12=7170 nu12=0.28
+# angle  = 0.0
+# tk     = 1.25
 #
-# [point_load] — concentrated load at the nearest mesh node
-#   x, y : target coordinates [mm]
-#   Fx, Fy, Fz : forces  [N]
-#   Mx, My     : moments [N·mm]
+# [ply]
+# preset = cfrp_t300
+# angle  = 90.0
+# tk     = 1.25
 #
-# [edge_load] — uniform traction distributed along a named boundary
-#   boundary : physical group name (LEFT | RIGHT | TOP | BOTTOM | HOLE | HOLE_0 …)
-#   Tx : in-plane traction in x [N/mm]
-#   Ty : in-plane traction in y [N/mm]
-#   Tz : transverse traction    [N/mm]
-# ───────────────────────────────────────────────────────────────────
+# [ply]
+# preset = cfrp_t300
+# angle  = 90.0
+# tk     = 1.25
+#
+# [ply]
+# preset = cfrp_t300
+# angle  = 0.0
+# tk     = 1.25
+
+# ── example: fully manual ply definition ──────────────────────────
+# [ply]
+# E1    = 181000   # fibre-direction modulus [MPa]
+# E2    =  10300   # transverse modulus [MPa]
+# G12   =   7170   # shear modulus [MPa]
+# nu12  =    0.28  # major Poisson's ratio
+# angle =    0.0   # fibre angle from x-axis [deg]
+# tk    =    2.5   # ply thickness [mm]
+
+# ── loads ─────────────────────────────────────────────────────────
 [loads]
-pressure = -0.1        # lateral pressure [MPa]; negative = downward
+pressure = -0.1     # lateral pressure [MPa]; negative = downward (−z)
 
-# In-plane body force (uncomment for gravity with steel at 10 mm thickness):
-# body_fx  =  0.0
-# body_fy  = -0.7697    # ≈ 7850 kg/m³ × 9.81 m/s² × 0.010 m × 1e-3 MPa/Pa
+# body force (uncomment for self-weight of steel 10 mm):
+# body_fy = -0.7697  # ≈ 7850 kg/m³ × 9.81 m/s² × 10 mm × 1e-3
 
-# Point load at plate centre (uncomment to enable):
+# ── point load at plate centre ─────────────────────────────────────
 # [point_load]
 # x  = 150.0
 # y  = 100.0
-# Fz = -500.0           # 500 N downward
+# Fz = -500.0        # 500 N downward
 
-# Uniform in-plane tension on the right edge (uncomment to enable):
+# ── in-plane edge tension on right edge ────────────────────────────
 # [edge_load]
 # boundary = RIGHT
-# Tx = 10.0             # 10 N/mm tension in x
+# Tx = 10.0          # 10 N/mm tension in x
 
-# Transverse line load along top edge (uncomment to enable):
-# [edge_load]
-# boundary = TOP
-# Tz = -5.0             # 5 N/mm downward
-
-# ───────────────────────────────────────────────────────────────────
-# BOUNDARY CONDITIONS  (repeat [bc] for each boundary region)
+# ── boundary conditions ────────────────────────────────────────────
 #
-# boundary : physical group name — LEFT | RIGHT | TOP | BOTTOM | HOLE | HOLE_0 …
-# type     :
-#   clamped           fix u v w θx θy  (all 5 DOFs)
-#   pinned            fix u v w        (rotations free)
-#   simply_supported  fix w only       (classic plate SS)
+# type options (6-DOF):
+#   clamped           fix u v w θx θy θz  (all 6 DOFs)
+#   pinned            fix u v w
+#   simply_supported  fix w only
 #   roller_x          fix u only
 #   roller_y          fix v only
-#   roller_z          fix w only       (synonym for simply_supported)
-#   symmetry_x        fix u, θy        (symmetry plane x = const)
-#   symmetry_y        fix v, θx        (symmetry plane y = const)
-#   antisymmetry_x    fix v, w, θx     (anti-symmetry plane x = const)
-#   antisymmetry_y    fix u, w, θy     (anti-symmetry plane y = const)
-#   free              no constraints   (explicit no-op, for documentation)
-# ───────────────────────────────────────────────────────────────────
+#   roller_z          fix w only
+#   symmetry_x        fix u, θy           (plane x=const)
+#   symmetry_y        fix v, θx           (plane y=const)
+#   antisymmetry_x    fix v, w, θx
+#   antisymmetry_y    fix u, w, θy
+#   fixed_drill       fix θz only
+#   free              no constraints
+#
 [bc]
 boundary = LEFT
 type     = clamped
 
-# Simply support the right edge (uncomment to change):
-# [bc]
-# boundary = RIGHT
-# type     = simply_supported
-
-# All-edges simply supported (uncomment all four):
+# simply support all four edges (uncomment all four):
 # [bc]
 # boundary = LEFT
 # type     = simply_supported
-#
 # [bc]
 # boundary = RIGHT
 # type     = simply_supported
-#
 # [bc]
 # boundary = TOP
 # type     = simply_supported
-#
 # [bc]
 # boundary = BOTTOM
 # type     = simply_supported
 
-# ───────────────────────────────────────────────────────────────────
-# OUTPUT / RUN CONTROL
-# ───────────────────────────────────────────────────────────────────
+# ── output ────────────────────────────────────────────────────────
 [output]
-verify_geometry_only = false    # true = stop after geometry, skip FE solve
+verify_geometry_only = false
 msh_file             = plate_mitc6.msh
-out_base             = plate_results   # writes plate_results.vtk
+out_base             = plate_results
+# writes plate_results.vtk
+# VTK fields:
+#   spr_Nx/Ny/Nxy/Mx/My/Mxy/Qx/Qy     — SPR nodal stress resultants
+#   spr_top/bot_sigma1/sigma2/vonMises  — SPR surface principal stresses
+#   centroid_Nx/Ny/Mx/vm_top/vm_bot    — element centroid values (comparison)
+#   displacement (vector), rotation (vector), w_deflection (scalar)
